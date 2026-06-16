@@ -1,0 +1,16 @@
+{
+    "providers": {
+        "local": {
+            "baseUrl": "http://host.docker.internal:1234/",
+            "api": "openai-completions",
+            "apiKey": "not-needed",
+            "models": [
+                {
+                    "id": "local",
+                    "name": "local",
+                    "contextWindow": 65536
+                }
+            ]
+        }
+    }
+}

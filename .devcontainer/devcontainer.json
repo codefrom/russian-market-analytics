@@ -1,0 +1,24 @@
+{
+    "name": "PI Dev Container",
+    "dockerFile": "Dockerfile",
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.vscode-typescript-next",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode"
+            ]
+        }
+    },
+    "mounts": [
+        "source=${localWorkspaceFolder}/.devcontainer/pi-home/models.json,target=/home/node/.pi/agent/models.json,type=bind",
+        "source=${localWorkspaceFolder}/.devcontainer/pi-home/settings.json,target=/home/node/.pi/agent/settings.json,type=bind"
+    ],
+    "remoteUser": "node",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "latest"
+        }
+    }
+}

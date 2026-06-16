@@ -1,0 +1,17 @@
+{
+  "defaultBackend": "auto",
+  "backends": {
+    "duckduckgo": { "enabled": true },
+    "jina": { "enabled": false },
+    "marginalia": { "enabled": false },
+    "serper": { "enabled": false },
+    "tavily": { "enabled": false },
+    "brave": { "enabled": false },
+    "exa": { "enabled": false },
+    "firecrawl": { "enabled": false },
+    "langsearch": { "enabled": false },
+    "websearchapi": { "enabled": false },
+    "perplexity": { "enabled": false },
+    "searxng": { "enabled": false }
+  }
+}

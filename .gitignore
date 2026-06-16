@@ -1,0 +1,28 @@
+# Артефакты выполнения (запросы, отчёты, временные данные)
+artifacts/
+
+# История котировок и промежуточные CSV (генерируются скриптами)
+*_history.csv
+*.csv
+
+# Логи сессий (содержат внутренние данные агентов)
+sessionLogs/
+pi-session-*.html
+
+# Виртуальное окружение Python и кэш
+tools/venv/
+tools/__pycache__/
+__pycache__/
+*.pyc
+
+# Конфиденциальные настройки (если появятся в корне или .devcontainer)
+models.json
+settings.json
+.env
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# LLM proxy
+llm/

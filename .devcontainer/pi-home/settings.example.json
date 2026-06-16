@@ -1,0 +1,14 @@
+{
+  "defaultProvider": "local",
+  "defaultModel": "auto",
+  "theme": "dark",
+  "quietStartup": false,
+  "collapseChangelog": false,
+  "packages": [
+    "npm:@tintinweb/pi-subagents",
+    "npm:pi-search-hub"
+  ],
+  "lastChangelogVersion": "0.79.4",
+  "defaultThinkingLevel": "high",
+  "hideThinkingBlock": true
+}

@@ -135,9 +135,6 @@ export async function runPipeline(
       }
     }
 
-    checkAborted();
-    await fs.writeFile(path.join(runDir, "warnings.md"), warnings.map(w => w + "\n").join(""));
-
     // Формирование списков тикеров
     let stockTickers = foundInstruments.filter(i => i.type === "stock").map(i => i.ticker);
     let bondTickers = foundInstruments.filter(i => i.type === "bond").map(i => i.ticker);
@@ -165,7 +162,6 @@ export async function runPipeline(
     }
 
     checkAborted();
-
     // Извлечение тикеров из RND
     const rndTickers = extractTickersFromRndOutput(rndOutput);
     if (rndTickers.length > 0) {
@@ -187,6 +183,17 @@ export async function runPipeline(
       etfTickers = foundInstruments.filter(i => i.type === "etf").map(i => i.ticker);
       allTickers = [...stockTickers, ...bondTickers, ...etfTickers];
     }
+
+    // В lookup_results.json кладём ВСЕ найденные инструменты (foundInstruments)
+    await fs.writeFile(
+      path.join(runDir, "lookup_results.json"),
+      JSON.stringify(foundInstruments, null, 2)
+    );
+    // В warnings.md записываем все накопленные предупреждения
+    await fs.writeFile(
+      path.join(runDir, "warnings.md"),
+      warnings.map(w => w + "\n").join("")
+    );
 
     checkAborted();
 

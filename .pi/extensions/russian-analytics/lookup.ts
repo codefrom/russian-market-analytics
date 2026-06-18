@@ -36,8 +36,7 @@ async function checkStock(ticker: string, timeoutMs = 5000): Promise<{ ticker: s
     const j = await r.json();
     const secData = j?.securities?.data;
     if (secData?.length > 0) {
-      // Поля: SECID, SHORTNAME, SECNAME...
-      const name = secData[0][2] || secData[0][1] || ticker.toUpperCase(); // SECNAME или SHORTNAME
+      const name = secData[0][2] || secData[0][1] || ticker.toUpperCase();
       return { ticker: ticker.toUpperCase(), name };
     }
   } catch {}
@@ -75,6 +74,29 @@ async function checkEtf(ticker: string, timeoutMs = 5000): Promise<{ ticker: str
   return null;
 }
 
+/** Поиск облигации по названию (через MOEX API) */
+async function lookupBondByName(query: string, timeoutMs = 7000): Promise<{ ticker: string; name: string } | null> {
+  const url = `https://iss.moex.com/iss/securities.json?q=${encodeURIComponent(query)}&limit=5`;
+  const r = await fetchWithTimeout(url, timeoutMs);
+  if (!r || !r.ok) return null;
+  try {
+    const j = await r.json();
+    const securities = j?.securities?.data ?? [];
+    for (const sec of securities) {
+      const secId = sec[0];
+      const checkUrl = `https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQCB/securities/${secId}.json`;
+      const cr = await fetchWithTimeout(checkUrl, 3000);
+      if (!cr || !cr.ok) continue;
+      const cj = await cr.json();
+      if ((cj?.securities?.data?.length ?? 0) > 0) {
+        const name = sec[2] || sec[1];
+        return { ticker: secId, name };
+      }
+    }
+  } catch {}
+  return null;
+}
+
 // ============== Массовый поиск облигаций ==============
 
 interface BondRecord {
@@ -83,22 +105,14 @@ interface BondRecord {
   name: string;
 }
 
-/**
- * Выполняет один вызов fetch_moex_bonds.py с массивом queries и возвращает список всех найденных облигаций.
- * Каждый запрос оборачивается в одинарные кавычки для безопасной передачи в shell.
- */
 async function fetchBondsBatch(queries: string[]): Promise<BondRecord[]> {
   if (queries.length === 0) return [];
-  // Экранируем: заменяем все одинарные кавычки внутри строки на '\'', чтобы не сломать оболочку
   const escapedQueries = queries
     .map(q => `'${q.replace(/'/g, "'\\''")}'`)
     .join(' ');
   try {
     const cmd = `tools/venv/bin/python tools/fetch_moex_bonds.py --queries ${escapedQueries} --json`;
-    const { stdout } = await execAsync(
-      cmd,
-      { timeout: 30000 } // увеличенный таймаут
-    );
+    const { stdout } = await execAsync(cmd, { timeout: 30000 });
     const sanitized = stdout.replace(/\bNaN\b/g, "null");
     const data = parseJsonSafe(sanitized);
     if (Array.isArray(data)) {
@@ -114,117 +128,118 @@ async function fetchBondsBatch(queries: string[]): Promise<BondRecord[]> {
   return [];
 }
 
-/**
- * Сопоставляет исходный идентификатор с наилучшим совпадением из списка облигаций.
- * Приоритет: точное совпадение тикера (ticker), затем частичное совпадение с shortname или name.
- */
 function findBestBondMatch(original: string, bonds: BondRecord[]): BondRecord | null {
-  const upperOriginal = original.toUpperCase();
-  // 1. Точное совпадение по тикеру
-  const exact = bonds.find(b => b.ticker.toUpperCase() === upperOriginal);
+  const upper = original.toUpperCase();
+  const exact = bonds.find(b => b.ticker.toUpperCase() === upper);
   if (exact) return exact;
-  // 2. Совпадение по shortname или name (содержит original)
   const partial = bonds.find(b =>
-    b.shortname.toUpperCase().includes(upperOriginal) ||
-    b.name.toUpperCase().includes(upperOriginal)
+    b.shortname.toUpperCase().includes(upper) ||
+    b.name.toUpperCase().includes(upper)
   );
   return partial || null;
 }
 
-/**
- * Массовый поиск облигаций для всех идентификаторов.
- * Возвращает Map: исходная строка -> LookupResult (если найдена) или null.
- */
-async function batchLookupBonds(identifiers: string[]): Promise<Map<string, LookupResult | null>> {
-  const resultMap = new Map<string, LookupResult | null>();
-  if (identifiers.length === 0) return resultMap;
+// ============== Приоритет совпадений ==============
 
-  const allBonds = await fetchBondsBatch(identifiers);
-
-  for (const id of identifiers) {
-    const match = findBestBondMatch(id, allBonds);
-    if (match) {
-      resultMap.set(id, {
-        original: id,
-        found: true,
-        ticker: match.ticker,
-        type: "bond",
-        name: match.shortname || match.name
-      });
-    } else {
-      resultMap.set(id, null);
-    }
-  }
-  return resultMap;
+interface Candidate {
+  type: "stock" | "bond" | "etf";
+  ticker: string;
+  name: string;
+  source: "exact_ticker" | "exact_name" | "partial" | "fallback";
 }
 
-// ============== Кэш и основная логика ==============
+function scoreCandidate(c: Candidate, original: string): number {
+  const upper = original.toUpperCase();
+  const tickerUpper = c.ticker.toUpperCase();
+  const nameUpper = c.name.toUpperCase();
 
-const lookupCache = new Map<string, LookupResult>();
+  if (tickerUpper === upper) return 0; // точное совпадение тикера
+  if (nameUpper === upper) return 1;   // точное совпадение названия
+  if (nameUpper.includes(upper) || upper.includes(nameUpper)) return 2; // частичное
+  return 3; // fallback
+}
 
-/** Индивидуальный поиск акций и ETF */
-async function lookupStockOrEtf(trimmed: string): Promise<LookupResult | null> {
-  // Акция (точный тикер) – теперь возвращает имя
-  const stock = await checkStock(trimmed);
-  if (stock) {
-    return { original: trimmed, found: true, ticker: stock.ticker, type: "stock", name: stock.name };
+/** Выбирает лучшего кандидата из нескольких */
+function pickBest(candidates: Candidate[], original: string): Candidate | null {
+  if (candidates.length === 0) return null;
+  // сортируем по score, затем по приоритету типа: stock > etf > bond
+  const typeOrder: Record<string, number> = { stock: 0, etf: 1, bond: 2 };
+  candidates.sort((a, b) => {
+    const scoreA = scoreCandidate(a, original);
+    const scoreB = scoreCandidate(b, original);
+    if (scoreA !== scoreB) return scoreA - scoreB;
+    return (typeOrder[a.type] ?? 0) - (typeOrder[b.type] ?? 0);
+  });
+  return candidates[0];
+}
+
+// ============== Основной поиск одного идентификатора ==============
+
+async function lookupOne(
+  original: string,
+  allBonds: BondRecord[]
+): Promise<LookupResult> {
+  const trimmed = original.trim();
+  if (!trimmed) return { original, found: false };
+
+  const candidates: Candidate[] = [];
+
+  // Параллельный запуск всех проверок
+  const [stockResult, etfResult, stockByName, bondByName] = await Promise.all([
+    checkStock(trimmed),
+    checkEtf(trimmed),
+    lookupStockByName(trimmed),
+    lookupBondByName(trimmed),
+  ]);
+
+  // Акция (точный тикер)
+  if (stockResult) {
+    candidates.push({ type: "stock", ticker: stockResult.ticker, name: stockResult.name, source: "exact_ticker" });
   }
-  // ETF – теперь возвращает имя
-  const etf = await checkEtf(trimmed);
-  if (etf) {
-    return { original: trimmed, found: true, ticker: etf.ticker, type: "etf", name: etf.name };
+  // ETF
+  if (etfResult) {
+    candidates.push({ type: "etf", ticker: etfResult.ticker, name: etfResult.name, source: "exact_ticker" });
+  }
+  // Облигация из пакетного поиска
+  const bondMatch = findBestBondMatch(trimmed, allBonds);
+  if (bondMatch) {
+    candidates.push({ type: "bond", ticker: bondMatch.ticker, name: bondMatch.shortname || bondMatch.name, source: "partial" });
   }
   // Поиск акции по названию
-  const stockByName = await lookupStockByName(trimmed);
   if (stockByName) {
-    return { original: trimmed, found: true, ticker: stockByName.ticker, type: "stock", name: stockByName.name };
+    candidates.push({ type: "stock", ticker: stockByName.ticker, name: stockByName.name, source: "fallback" });
   }
-  return null;
-}
+  // Поиск облигации по названию
+  if (bondByName) {
+    candidates.push({ type: "bond", ticker: bondByName.ticker, name: bondByName.name, source: "fallback" });
+  }
 
-function store(key: string, val: LookupResult): LookupResult {
-  lookupCache.set(key, val);
-  return val;
+  const best = pickBest(candidates, trimmed);
+  if (best) {
+    return {
+      original,
+      found: true,
+      ticker: best.ticker,
+      type: best.type,
+      name: best.name,
+    };
+  }
+  return { original, found: false };
 }
 
 // ============== Публичный API ==============
 
 export async function lookupInstruments(identifiers: string[]): Promise<LookupResult[]> {
-  lookupCache.clear();
   const cleaned = identifiers.map(s => s.trim()).filter(Boolean);
   if (cleaned.length === 0) return [];
 
-  // Шаг 1: массовый поиск облигаций
-  const bondResults = await batchLookupBonds(cleaned);
+  // Один раз получаем все облигации для всех идентификаторов
+  const allBonds = await fetchBondsBatch(cleaned);
 
-  // Шаг 2: для тех, кто не найден в облигациях, ищем акции/ETF параллельно
-  const unresolved = cleaned.filter(id => {
-    const r = bondResults.get(id);
-    return r === null; // null означает "не найдено"
-  });
-
-  const stockResults = new Map<string, LookupResult>();
-  if (unresolved.length > 0) {
-    const stockPromises = unresolved.map(async (id) => {
-      const result = await lookupStockOrEtf(id);
-      if (result) stockResults.set(id, result);
-      else stockResults.set(id, { original: id, found: false });
-    });
-    await Promise.all(stockPromises);
-  }
-
-  // Шаг 3: собрать итоговый массив, сохраняя порядок исходных идентификаторов
-  const finalResults: LookupResult[] = [];
-  for (const id of cleaned) {
-    const bondRes = bondResults.get(id);
-    if (bondRes !== null && bondRes !== undefined) {
-      finalResults.push(bondRes);
-    } else {
-      finalResults.push(stockResults.get(id) || { original: id, found: false });
-    }
-  }
-
-  return finalResults;
+  const results = await Promise.all(
+    cleaned.map(id => lookupOne(id, allBonds))
+  );
+  return results;
 }
 
 export function registerLookup(pi: ExtensionAPI) {

@@ -8,6 +8,11 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 def fetch_stock_history(ticker, days=90):
+    """
+    ticker: тикер на Мосбирже (SBER, GAZP, LKOH и т.п.)
+    days: глубина истории в днях
+    Возвращает DataFrame с колонками: date, open, high, low, close, volume
+    """
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
     
@@ -15,20 +20,34 @@ def fetch_stock_history(ticker, days=90):
     params = {
         'from': start_date.strftime('%Y-%m-%d'),
         'till': end_date.strftime('%Y-%m-%d'),
-        'history.columns': 'TRADEDATE,OPEN,HIGH,LOW,CLOSE,VOLUME'
+        'history.columns': 'TRADEDATE,OPEN,HIGH,LOW,CLOSE,VOLUME',
+        'limit': 100,  # максимальный размер страницы
+        'start': 0      # начнём с первой строки
     }
     
-    r = requests.get(url, params=params)
-    r.raise_for_status()
-    data = r.json()
+    all_data = []
+    while True:
+        r = requests.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+        
+        history = data['history']['data']
+        if not history:
+            break
+            
+        all_data.extend(history)
+        
+        # Если количество полученных записей меньше запрошенного лимита — пагинация завершена
+        if len(history) < params['limit']:
+            break
+            
+        params['start'] += len(history)
     
-    history = data['history']['data']
+    if not all_data:
+        return pd.DataFrame()
+    
     columns = data['history']['columns']
-    df = pd.DataFrame(history, columns=columns)
-    
-    if df.empty:
-        return df
-    
+    df = pd.DataFrame(all_data, columns=columns)
     df.columns = ['date', 'open', 'high', 'low', 'close', 'volume']
     df['date'] = pd.to_datetime(df['date'])
     df = df.sort_values('date')
@@ -54,7 +73,8 @@ if __name__ == "__main__":
         output_path = args.output if args.output else f"{ticker}_history.csv"
         df.to_csv(output_path, index=False)
         
-        # Краткий вывод для пользователя
+        # Краткая информация для пользователя
+        last_date = df['date'].iloc[-1].strftime('%Y-%m-%d')
         print(f"Данные сохранены в {output_path}")
         print(df.tail(3).to_string(index=False))
     except Exception as e:

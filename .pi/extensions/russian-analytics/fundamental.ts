@@ -29,10 +29,10 @@ export async function runFundamentalWorkers(
             } catch (e) { fundamentalData = `Ошибка: ${e}`; }
 
             const prompt = `Тикер: ${ticker}
-Данные котировок (fetch_moex_stock.py за 365 дней):
+Данные котировок:
 ${stockData}
 
-Фундаментальные показатели (fetch_smartlab_fundamental.py):
+Фундаментальные показатели :
 ${fundamentalData}
 
 Задача: проведи фундаментальный анализ и верни результат в формате, описанном в твоей инструкции.`;

@@ -180,22 +180,7 @@ export async function spawnAgent(
     let resolved = false;
 
     return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            if (!resolved) {
-                if (agentId) {
-                    const requestId = crypto.randomUUID();
-                    const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply: any) => {
-                        unsub();
-                        if (!reply.success) onProgress?.(`Stop failed: ${reply.error}`);
-                    });
-                    pi.events.emit("subagents:rpc:stop", { requestId, agentId: agentId });
-                }
-                reject(new Error(`Timeout waiting for agent ${type}`));
-            }
-        }, 600000);
-
         ctx.signal?.addEventListener("abort", () => {
-            clearTimeout(timeout);
             resolved = true;
             reject(new Error(`Operation aborted`));
         })
@@ -206,14 +191,12 @@ export async function spawnAgent(
                 agentId = reply.data?.id;
                 onProgress?.(`Агент ${type} запущен, id: ${agentId}`);
             } else {
-                clearTimeout(timeout);
                 reject(new Error(`RPC spawn failed: ${reply.error}`));
             }
         });
 
         const unsubscribeCompleted = pi.events.on("subagents:completed", (payload: any) => {
             if (agentId && payload.id === agentId) {
-                clearTimeout(timeout);
                 resolved = true;
                 unsubscribeCompleted();
                 let output = "Агент не вернул результат";
@@ -237,7 +220,6 @@ export async function spawnAgent(
                 onSessionCreated: ((session: AgentSession) => {
                     session.subscribe((event : AgentSessionEvent) => {
                         if (event.type === "agent_end") {
-                            clearTimeout(timeout);
                             resolved = true;
                             const output = getLastAssistantText(session)
                             resolve(output);

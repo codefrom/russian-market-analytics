@@ -340,5 +340,5 @@ function extractTickersFromRndOutput(text: string): string[] {
       tickers.push(...parts);
     }
   }
-  return tickers.filter(t => /^[A-Z0-9]{2,10}$/i.test(t));
+  return tickers;
 }

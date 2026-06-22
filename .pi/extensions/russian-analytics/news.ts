@@ -2,16 +2,21 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { registerStandardWorker, spawnAgent } from "./common";
+import { execAsync, registerStandardWorker } from "./common";
 
-// Элемент для передачи в runNewsWorkers
 export interface NewsItem {
   ticker: string;
   name?: string;
   type?: "stock" | "bond" | "etf";
 }
 
-// Основная логика
+function formatNewsEntry(item: any): string {
+  // Экранируем возможные спецсимволы в названии/заголовке
+  const title = item.title.replace(/\|/g, "\\|");
+  const summary = item.summary.replace(/\|/g, "\\|");
+  return `- [${item.date}] smart-lab: ${title} — ${summary}`;
+}
+
 export async function runNewsWorkers(
     pi: ExtensionAPI,
     ctx: ExtensionContext,
@@ -21,21 +26,33 @@ export async function runNewsWorkers(
 ): Promise<{ success: boolean; message: string; summaryFile?: string }> {
     try {
         onProgress(`Новостной анализ (${items.length} тикеров)...`);
-        const results: { ticker: string; output: string }[] = [];
+        const results: { ticker: string; name: string; output: string }[] = [];
 
         for (const item of items) {
             const ticker = item.ticker;
             const name = item.name || ticker;
-            const type = item.type || "актив";
-            // Формируем расширенный промпт с названием и типом
-            const prompt = `Тикер: ${ticker}\nНазвание: ${name}\nТип: ${type}\nRUN_DIR: ${runDir}\nЗадача: найди 1-3 актуальные новости по указанному инструменту. Верни результат в формате, описанном в твоей инструкции.`;
-            const output = await spawnAgent(pi, ctx, "russian-news-worker", prompt, ticker, onProgress);
-            if (!output || output.trim() === '') {
-                results.push({ ticker, output: `Новости по тикеру ${ticker}: не удалось получить данные.` });
-                onProgress(`[${ticker}] Результат пуст, добавлено сообщение по умолчанию.`);
+            onProgress(`[${ticker}] Поиск новостей через smart-lab...`);
+
+            let newsData: any;
+            try {
+                const cmd = `tools/venv/bin/python tools/fetch_smartlab_news.py "${ticker}" "${name.replace(/"/g, '\\"')}"`;
+                const { stdout } = await execAsync(cmd);
+                newsData = JSON.parse(stdout);
+            } catch (e: any) {
+                onProgress(`[${ticker}] Ошибка скрипта: ${e.message}`);
+                newsData = { news: [] };
+            }
+
+            if (newsData.news && newsData.news.length > 0) {
+                const lines = [`Новости по тикеру ${ticker} (${name}):`];
+                for (const entry of newsData.news) {
+                    lines.push(formatNewsEntry(entry));
+                }
+                results.push({ ticker, name, output: lines.join("\n") });
+                onProgress(`[${ticker}] Найдено ${newsData.news.length} новостей`);
             } else {
-                results.push({ ticker, output });
-                onProgress(`[${ticker}] Анализ завершён`);
+                results.push({ ticker, name, output: `Новости по тикеру ${ticker} (${name}): на момент анализа значимых новостей не обнаружено.` });
+                onProgress(`[${ticker}] Новостей не найдено`);
             }
         }
 
@@ -58,7 +75,7 @@ export function registerNews(pi: ExtensionAPI) {
   registerStandardWorker(pi, {
     name: "news",
     label: "Run News Workers",
-    toolDescription: "Запускает новостных воркеров для указанных тикеров.",
+    toolDescription: "Запускает новостной анализ через smart-lab.",
     commandDescription: "Запустить новостной анализ.",
     commandExample: "/news.run_all artifacts/news_test [SBER, VTBR]",
     parameters: Type.Object({
@@ -66,7 +83,6 @@ export function registerNews(pi: ExtensionAPI) {
       tickers: Type.Array(Type.String()),
     }),
     runFn: async (pi, ctx, params, onProgress) => {
-      // Параметр tickers — массив строк, преобразуем в NewsItem без name/type
       const items: NewsItem[] = (params.tickers as string[]).map(t => ({ ticker: t }));
       return await runNewsWorkers(pi, ctx, params.runDir, items, onProgress);
     },

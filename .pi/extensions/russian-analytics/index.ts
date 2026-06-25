@@ -11,6 +11,7 @@ import { registerTax } from "./tax";
 import { registerQa } from "./qa";
 import { registerLookup } from "./lookup";
 import { registerPipeline } from "./pipeline";
+import { registerWebTools } from "./webtools";
 import * as fs from "fs";
 
 // Типы для входных данных (можно расширить при необходимости)
@@ -82,7 +83,8 @@ export function generateMarkdownFromMessages(messages: Message[]): string {
 }
 
 export default function (pi: ExtensionAPI) {
-    pi.on("agent_end", (_event: any, ctx: any) => {
+    // Чтобы включить запись логов агентских сессий в sessionLogs/ - нужно разремить:
+    /*pi.on("agent_end", (_event: any, ctx: any) => {
         const sessionName = ctx.sessionManager.getSessionName();
         const sessionId = ctx.sessionManager.getSessionId();
         if (sessionName) {
@@ -92,8 +94,9 @@ export default function (pi: ExtensionAPI) {
             fs.appendFileSync(renderFile, `# SESSION LOG\n`);
             fs.appendFileSync(renderFile, `${generateMarkdownFromMessages(_event.messages)}\n`);
         }
-    });
+    });*/
     
+    registerWebTools(pi);
     registerPipeline(pi);
     registerLookup(pi);
     registerMacro(pi);

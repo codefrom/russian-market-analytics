@@ -50,8 +50,15 @@ async function getMacroContext() {
         cbrStatistics = "Ошибка получения статистика БР: " + e;
     }
 
-    // Измените возвращаемое значение:
-    return { macroContext: results, surveyTable, cbrStatistics };
+    let govDebtData = "";
+    try {
+        const { stdout } = await execAsync("tools/venv/bin/python tools/fetch_government_debt.py");
+        govDebtData = stdout;
+    } catch (e) {
+        govDebtData = "Ошибка получения данных по внешнему долгу: " + e;
+    }
+
+    return { macroContext: results, surveyTable, cbrStatistics, govDebtData };
 }
 
 function formatMacroContextMarkdown(ctx: any): string {
@@ -83,12 +90,12 @@ export async function runMacroWorkers(
 ): Promise<{ success: boolean; message: string; summaryFile?: string }> {
     try {
         onProgress("Получение макроконтекста...");
-        const { macroContext, surveyTable, cbrStatistics} = await getMacroContext();
+        const { macroContext, surveyTable, cbrStatistics, govDebtData } = await getMacroContext();
         const macroContextFormatted = formatMacroContextMarkdown(macroContext);
 
         const results: { topic: string; output: string }[] = [];
         for (const topic of topics) {
-            const prompt = `Тема: ${topic}\nRUN_DIR: ${runDir}\nМакро-показатели:\n${macroContextFormatted}\nМакропрогноз ЦБ:\n${surveyTable}\nСтатистика Банка России:\n${cbrStatistics}\nЗадача: проведи макроэкономический анализ по теме и верни результат в формате, описанном в твоей инструкции.`;
+            const prompt = `Тема: ${topic}\nRUN_DIR: ${runDir}\nМакро-показатели:\n${macroContextFormatted}\nМакропрогноз ЦБ:\n${surveyTable}\nСтатистика Банка России:\n${cbrStatistics}\n${govDebtData}\nЗадача: проведи макроэкономический анализ по теме и верни результат в формате, описанном в твоей инструкции.`;
             const output = await spawnAgent(pi, ctx, "russian-macro-worker", prompt, topic, onProgress);
             results.push({ topic, output });
         }

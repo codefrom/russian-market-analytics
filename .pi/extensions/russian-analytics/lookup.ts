@@ -27,7 +27,7 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
   }
 }
 
-/** Проверка тикера как акции на TQBR. Возвращает null, если не найдена. */
+/** Проверка тикера как акции на TQBR. Возвращает null, если не найдена или это не акция. */
 async function checkStock(ticker: string, timeoutMs = 5000): Promise<{ ticker: string; name: string } | null> {
   const url = `https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/${ticker.toUpperCase()}.json`;
   const r = await fetchWithTimeout(url, timeoutMs);
@@ -36,7 +36,20 @@ async function checkStock(ticker: string, timeoutMs = 5000): Promise<{ ticker: s
     const j = await r.json();
     const secData = j?.securities?.data;
     if (secData?.length > 0) {
-      const name = secData[0][2] || secData[0][1] || ticker.toUpperCase();
+      // Проверяем INSTRID: EQIN = акции, всё остальное — не акции
+      const columns = j?.securities?.columns || [];
+      const instrIdIndex = columns.indexOf("INSTRID");
+      if (instrIdIndex !== -1 && secData[0] && secData[0][instrIdIndex]) {
+        const instrId = secData[0][instrIdIndex];
+        // Если это не акция — не считаем акцией
+        if (instrId !== "EQIN") {
+          return null;
+        }
+      }
+      const nameIndex = columns.indexOf("SECNAME");
+      const name = (nameIndex !== -1 && secData[0] && secData[0][nameIndex]) || 
+                   (columns.indexOf("SHORTNAME") !== -1 && secData[0][columns.indexOf("SHORTNAME")]) || 
+                   ticker.toUpperCase();
       return { ticker: ticker.toUpperCase(), name };
     }
   } catch {}
@@ -68,7 +81,9 @@ async function checkEtf(ticker: string, timeoutMs = 5000): Promise<{ ticker: str
     const { stdout } = await execAsync(`tools/venv/bin/python tools/fetch_moex_etf.py ${ticker}`, { timeout: timeoutMs });
     const d = parseJsonSafe(stdout);
     if (d?.exists) {
-      return { ticker: ticker.toUpperCase(), name: d.name || d.shortname || ticker.toUpperCase() };
+      // Используем name или shortname из ответа скрипта
+      const name = d.name || d.shortname || `${ticker.toUpperCase()} ETF`;
+      return { ticker: ticker.toUpperCase(), name };
     }
   } catch {}
   return null;

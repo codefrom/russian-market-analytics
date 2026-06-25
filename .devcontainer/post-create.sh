@@ -5,10 +5,7 @@ sudo chown -R node:node /home/node/.pi/agent
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 # Установка плагинов PI по умолчанию
-pi install npm:npm:pi-search-hub
 pi install npm:@tintinweb/pi-subagents
-
-pip install --break-system-packages ddgs
 
 # Создание виртуального окружения Python для проекта
 python3 -m venv tools/venv

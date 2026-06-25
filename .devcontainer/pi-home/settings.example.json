@@ -5,10 +5,9 @@
   "quietStartup": false,
   "collapseChangelog": false,
   "packages": [
-    "npm:@tintinweb/pi-subagents",
-    "npm:pi-search-hub"
+    "npm:@tintinweb/pi-subagents"
   ],
-  "lastChangelogVersion": "0.79.4",
+  "lastChangelogVersion": "0.80.2",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true
 }

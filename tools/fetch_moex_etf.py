@@ -2,7 +2,7 @@
 """
 Получение данных по ETF/БПИФ с MOEX (доски TQTF, TQTD).
 Использование: python3 fetch_moex_etf.py <TICKER>
-Возвращает JSON с полями: exists, ticker, board, last_price, volume, timestamp
+Возвращает JSON с полями: exists, ticker, board, name, shortname, last_price, volume, timestamp
 """
 
 import sys
@@ -39,12 +39,53 @@ def fetch_etf_info(ticker):
                         "exists": True,
                         "ticker": ticker.upper(),
                         "board": board,
+                        "name": sec_info.get('SECNAME', ''),
+                        "shortname": sec_info.get('SHORTNAME', ''),
+                        "instr_id": sec_info.get('INSTRID', ''),
                         "last_price": last_price,
                         "volume": volume,
                         "timestamp": datetime.now().isoformat()
                     }
         except Exception as e:
             continue
+    
+    # Пробуем также доску TQBR — возможно, ETF торгуется там (например, TMOS)
+    try:
+        url = f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{ticker}.json"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if 'securities' in data and data['securities']['data']:
+                sec_data = data['securities']['data'][0]
+                sec_cols = data['securities']['columns']
+                sec_info = dict(zip(sec_cols, sec_data))
+                
+                # Проверяем INSTRID: IFTF = БПИФ, IFA1 = ПИФ
+                instr_id = sec_info.get('INSTRID', '')
+                if instr_id in ('IFTF', 'IFA1'):
+                    mkt_data = {}
+                    if 'marketdata' in data and data['marketdata']['data']:
+                        mkt_row = data['marketdata']['data'][0]
+                        mkt_cols = data['marketdata']['columns']
+                        mkt_data = dict(zip(mkt_cols, mkt_row))
+                    
+                    last_price = mkt_data.get('LAST') or mkt_data.get('LCURRENTPRICE')
+                    volume = mkt_data.get('VOLTODAY')
+                    
+                    return {
+                        "exists": True,
+                        "ticker": ticker.upper(),
+                        "board": "TQBR",
+                        "name": sec_info.get('SECNAME', ''),
+                        "shortname": sec_info.get('SHORTNAME', ''),
+                        "instr_id": instr_id,
+                        "last_price": last_price,
+                        "volume": volume,
+                        "timestamp": datetime.now().isoformat()
+                    }
+    except Exception:
+        pass
+    
     return {
         "exists": False,
         "ticker": ticker.upper(),

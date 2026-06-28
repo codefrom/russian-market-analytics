@@ -273,12 +273,19 @@ export async function runPipeline(
     onProgress("Сборка финального отчёта...");
     const reportPath = path.join(runDir, "99_final_report.md");
     let report = `# Инвестиционный отчёт\n\n## Резюме\n${summaryText}\n\n`;
-    report += `## Сводка рекомендаций\n- Акции: ${stockTickers.join(', ') || 'нет'}\n- Облигации: ${bondTickers.join(', ') || 'нет'}\n- ETF: ${etfTickers.join(', ') || 'нет'}\n\n`;
-    report += `## План сделок\n*см. portfolio_summary.md*\n\n## Налоговые последствия\n*см. tax_summary.md*\n\n`;
+    report += `## Рассмотренные инструменты\n- Акции: ${stockTickers.join(', ') || 'нет'}\n- Облигации: ${bondTickers.join(', ') || 'нет'}\n- ETF: ${etfTickers.join(', ') || 'нет'}\n\n`;
+
+    // План сделок
+    const portfolioContent = await fs.readFile(path.join(runDir, "portfolio_summary.md"), "utf-8");
+    report += `${portfolioContent}\n\n`;
+
+    // Налоговые последствия
+    const taxContent = await fs.readFile(path.join(runDir, "tax_summary.md"), "utf-8");
+    report += `${taxContent}\n\n`;
 
     const summaryFiles = [
       "macro_summary.md","news_summary.md","fundamental_summary.md","technical_summary.md",
-      "bond_summary.md","etf_summary.md","rnd_summary.md","portfolio_summary.md","tax_summary.md"
+      "bond_summary.md","etf_summary.md","rnd_summary.md"
     ];
     for (const f of summaryFiles) {
       checkAborted();

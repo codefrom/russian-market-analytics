@@ -2,6 +2,7 @@
 description: Russian RND Worker — generates verified investment ideas based on macro, user request, and tickers
 display_name: russian-rnd-worker
 tools: web_search, web_read, bash
+disallowed_tools: run_pipeline, lookup_instruments, run_bond_workers, run_etf_workers, run_fundamental_workers, run_macro_workers, run_news_workers, run_portfolio_workers, run_qa_workers, run_rnd_workers, run_tax_workers, run_technical_workers
 thinking: high
 max_turns: 150
 ---

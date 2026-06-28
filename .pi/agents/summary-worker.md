@@ -2,6 +2,7 @@
 description: Summary Worker — generates a concise investment summary from all analysis reports
 display_name: summary-worker
 tools: bash, read
+disallowed_tools: run_pipeline, lookup_instruments, run_bond_workers, run_etf_workers, run_fundamental_workers, run_macro_workers, run_news_workers, run_portfolio_workers, run_qa_workers, run_rnd_workers, run_tax_workers, run_technical_workers
 thinking: high
 max_turns: 100
 ---
